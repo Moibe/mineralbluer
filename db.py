@@ -345,10 +345,16 @@ def stats():
             SELECT
                 (SELECT COUNT(*) FROM cosplays WHERE deleted = 0)                    AS cosplays,
                 (SELECT COUNT(*) FROM cosplays WHERE deleted = 0 AND verified = 1)   AS verified,
-                (SELECT COUNT(DISTINCT series) FROM cosplays WHERE deleted = 0
-                    AND series IS NOT NULL AND series <> '')                         AS series,
-                (SELECT COUNT(DISTINCT twitter) FROM cosplays WHERE deleted = 0
-                    AND twitter IS NOT NULL AND twitter <> '')                       AS cosplayers,
+                -- Spacing-insensitive, exactly like list_series(): otherwise the header counts a
+                -- series twice that the filter below it shows as one.
+                (SELECT COUNT(DISTINCT REPLACE(UPPER(series), ' ', '')) FROM cosplays
+                    WHERE deleted = 0 AND series IS NOT NULL AND series <> '')       AS series,
+                -- Keyed on the accounts, falling back to the raw handle list: most entries now
+                -- carry a twitch/instagram instead of a twitter, and counting only the twitter
+                -- column reported fewer cosplayers than the catalog actually holds.
+                (SELECT COUNT(DISTINCT COALESCE(twitter, handles)) FROM cosplays
+                    WHERE deleted = 0 AND (COALESCE(twitter, '') <> ''
+                        OR COALESCE(handles, '[]') <> '[]'))                         AS cosplayers,
                 (SELECT COUNT(*) FROM videos)                                        AS videos
             """
         ).fetchone()
