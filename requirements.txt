@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+yt-dlp
+opencv-python
+numpy
+# OCR: PP-OCR corriendo sobre onnxruntime. Se prefiere a Tesseract porque no necesita un binario
+# de sistema (instalación pip pura, igual que el resto del stack) y a EasyOCR porque no arrastra
+# torch -- onnxruntime ya viene de todos modos por insightface.
+rapidocr-onnxruntime
+# Solo se usa para elegir CUÁL frame del segmento se guarda como foto (cara más grande/nítida)
+# y para recortar el retrato vertical. La identidad no se calcula aquí: el nombre lo da el overlay.
+insightface
+onnxruntime
