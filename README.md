@@ -26,10 +26,15 @@ fotos de cada grupo junto con los datos leídos.
 ```bash
 python -m venv venv
 venv\Scripts\pip install -r requirements.txt
-venv\Scripts\python -m uvicorn main:app --reload --port 8000
+venv\Scripts\python -m uvicorn main:app --reload --port 8003
 ```
 
-Y en otra terminal, el front:
+**Puerto 8003**, no 8000: en esta máquina `chaturlist` ya escucha en 8000, y el choque no se ve como
+un choque — el front recibe respuestas de la otra app y falla de formas raras. Siguiendo la
+convención (apps Python en la serie 8000), 8000/8001/8002 ya están tomados por otros proyectos.
+
+Y en otra terminal, el front (el CORS acepta cualquier origen local, así que el puerto de Vite da
+igual; lo que sí importa es que `PUBLIC_API_URL` del front apunte al puerto de arriba):
 
 ```bash
 cd ../mineralbluer-front
@@ -107,6 +112,13 @@ Otras decisiones que salieron de medir, no de suponer:
   (`MINERALBLL`, `MINGRALBLO`, `MINERALBLD`…) y un match exacto deja pasar casi todas.
 - Cada segmento **vota** entre todos sus frames en vez de creerle a una sola lectura. El desacuerdo
   se guarda como `confidence`, y el front usa eso para marcar qué vale la pena revisar.
+- Las **lecturas parciales apoyan a la completa** en vez de competir con ella. El primer frame de
+  casi todo segmento cae con el rótulo a medio aparecer, y el OCR devuelve `THO` por `THOR`,
+  `MAVEL RIVALS` por `MARVEL RIVALS`, `@ate.k.weir` por `@nate.k.weir`. Un truncamiento no es
+  evidencia *contra* la lectura completa, así que se funde en ella antes de votar (una entrada real
+  pasó de 0.73 a 0.96 con esto). Se exige que el texto corto sea subsecuencia del largo y conserve
+  al menos el 60% de su longitud — sin ese piso, cualquier cadena de dos caracteres sería
+  subsecuencia de todo. Una lectura genuinamente distinta sigue bajando la confianza.
 - Un rótulo visto en **un solo frame** se descarta (`MIN_READINGS = 2`): casi siempre es ruido.
 
 ### Twitter vs. las demás cuentas

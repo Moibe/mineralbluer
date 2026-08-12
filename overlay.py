@@ -332,6 +332,43 @@ def _ratio(a: str, b: str) -> float:
     return SequenceMatcher(None, a or "", b or "").ratio()
 
 
+def _is_partial_text(short: str, long: str) -> bool:
+    """Whether `short` is `long` with characters missing, i.e. the same text read incompletely.
+
+    This is the shape of the first frame of nearly every segment: the caption is still fading in, so
+    OCR returns "THO" for "THOR", "MAVEL RIVALS" for "MARVEL RIVALS", "ate.k.weir" for
+    "nate.k.weir". A truncation is not evidence *against* the fuller reading, so it must not be
+    scored as disagreement -- see consolidate().
+
+    The length floor is what keeps this from being a wildcard: almost any two-character string is a
+    subsequence of almost anything, and "as" (a frame that read two letters of a handle) would
+    otherwise be folded into whatever won.
+    """
+    if short == long or len(short) < 3 or len(short) / len(long) < 0.6:
+        return False
+    remaining = iter(long)
+    return all(character in remaining for character in short)
+
+
+def _is_partial_accounts(short: str, long: str) -> bool:
+    """Same idea for the account list: reading two of the three accounts is a partial reading."""
+    short_set, long_set = set(short.split("|")), set(long.split("|"))
+    return bool(short_set) and short_set < long_set
+
+
+def _fold_partials(weights, is_partial):
+    """Merges each partial reading's weight into the fullest reading it is a partial of.
+
+    Returns {key: weight} over the surviving (fullest) keys only. Longest first, so a chain of
+    increasingly truncated readings all lands on the one complete one.
+    """
+    folded = {}
+    for key in sorted(weights, key=len, reverse=True):
+        target = next((kept for kept in folded if is_partial(key, kept)), None)
+        folded[target if target else key] = folded.get(target if target else key, 0.0) + weights[key]
+    return folded
+
+
 def same_caption(a, b) -> bool:
     """Whether two frames are showing the same cosplayer's caption.
 
@@ -359,7 +396,11 @@ def consolidate(observations):
     doubles as the confidence score the UI uses to flag entries worth eyeballing.
     """
 
-    def winner(field, key_of=lambda v: re.sub(r"[^a-z0-9]", "", str(v).lower())):
+    def winner(
+        field,
+        key_of=lambda v: re.sub(r"[^a-z0-9]", "", str(v).lower()),
+        is_partial=_is_partial_text,
+    ):
         weights = {}
         best_value = {}
         for obs in observations:
@@ -377,18 +418,24 @@ def consolidate(observations):
                 best_value[key] = (rank, value)
         if not weights:
             return None, 0.0
-        top = max(weights, key=weights.get)
-        return best_value[top][1], weights[top] / sum(weights.values())
+
+        # Partial readings back the fullest reading instead of competing with it. This is what stops
+        # the fade-in frame from being counted as a dissenting vote -- and, because folding happens
+        # before the vote, it also stops a truncation from ever *winning* one.
+        folded = _fold_partials(weights, is_partial)
+        top = max(folded, key=folded.get)
+        return best_value[top][1], folded[top] / sum(folded.values())
 
     character, char_agreement = winner("character")
     series, series_agreement = winner("series")
     twitter, handle_agreement = winner("twitter")
-    # The whole account list is voted on as a unit rather than per account: a frame where OCR
-    # dropped one of the three lines should lose to the frames that read all of them, not
-    # contribute a partial list that then has to be merged with the others.
+    # The whole account list is voted on as a unit rather than per account, so a frame that read two
+    # of the three accounts backs the frames that read all three (subset = partial reading) instead
+    # of contributing a short list that then has to be merged with the others.
     socials, _ = winner(
         "socials",
         key_of=lambda v: "|".join(sorted(f"{s['platform']}:{s['handle']}" for s in v)),
+        is_partial=_is_partial_accounts,
     )
 
     mean_score = sum(o["score"] for o in observations) / len(observations)
