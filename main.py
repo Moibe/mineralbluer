@@ -12,10 +12,11 @@ app = FastAPI(title="mineralbluer")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:7979",
-        "http://127.0.0.1:7979",
-    ],
+    # Any local origin, not a hardcoded pair. The front is reachable as localhost, as 127.0.0.1,
+    # and on whatever port Vite ends up using, and a browser that opened it under a spelling absent
+    # from the list gets a bare "Failed to fetch" -- indistinguishable from the API being down,
+    # which is the wrong thing to be debugging. Still local-only: nothing off this machine matches.
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_methods=["*"],
     allow_headers=["*"],
 )
